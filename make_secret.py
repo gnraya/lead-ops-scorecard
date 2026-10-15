@@ -51,6 +51,27 @@ def _random_password(n: int = 10) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(n))
 
 
+def _read_existing_passwords() -> dict:
+    """Parse the [passwords] section from an existing secret_block.txt (if any)."""
+    existing = {}
+    if not os.path.exists(OUT):
+        return existing
+    in_pw = False
+    with open(OUT, "r", encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if s.lower() == "[passwords]":
+                in_pw = True
+                continue
+            if in_pw and s and not s.startswith("["):
+                if "=" in s:
+                    k, v = s.split("=", 1)
+                    existing[k.strip().lower()] = v.strip().strip('"')
+            elif s.startswith("[") and s.lower() != "[passwords]":
+                in_pw = False
+    return existing
+
+
 def main():
     # 1) Encode the workbook.
     with open(XLSX, "rb") as f:
@@ -61,10 +82,19 @@ def main():
     names = sc.display_name_map()
     aliases = sorted(set(df["alias"].unique()) | {MANAGER_ALIAS})
 
-    # 3) Build the password map.
+    # 3) Build the password map. Reuse any passwords already present in the
+    #    existing secret_block.txt so re-running (e.g. for a data update) does
+    #    NOT invalidate passwords you've already shared. New people get a fresh
+    #    random password; FIXED entries always win.
+    existing = _read_existing_passwords()
     pw_map = {}
     for a in aliases:
-        pw_map[a] = FIXED.get(a, _random_password())
+        if a in FIXED:
+            pw_map[a] = FIXED[a]
+        elif a in existing:
+            pw_map[a] = existing[a]
+        else:
+            pw_map[a] = _random_password()
 
     # 4) Write the Streamlit secret block.
     lines = [f'scorecard_xlsx_b64 = "{b64}"', "", "[passwords]"]

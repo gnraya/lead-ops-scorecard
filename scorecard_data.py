@@ -147,13 +147,14 @@ def _parse_month_sheet(xl: pd.ExcelFile, sheet: str) -> pd.DataFrame:
             stack_i = i
             break
 
-    # Map each metric group -> its "Achieved" column index (the weighted score).
-    metric_achieved_col = {}
+    # Map each metric group -> its "Actual" column index (the raw measured
+    # value, e.g. actual productivity / quality %), NOT the weighted "Achieved".
+    metric_actual_col = {}
     for group_match, nice_name in METRIC_KEYS:
         for i, s in enumerate(sub_row):
             g = groups[i] or ""
-            if g.startswith(group_match) and s.lower() == "achieved":
-                metric_achieved_col[nice_name] = i
+            if g.startswith(group_match) and s.lower() == "actual":
+                metric_actual_col[nice_name] = i
                 break
 
     records = []
@@ -170,7 +171,7 @@ def _parse_month_sheet(xl: pd.ExcelFile, sheet: str) -> pd.DataFrame:
             "overall": row[overall_i] if overall_i is not None else None,
             "stack_rank": row[stack_i] if stack_i is not None else None,
         }
-        for nice_name, col_i in metric_achieved_col.items():
+        for nice_name, col_i in metric_actual_col.items():
             rec[nice_name] = row[col_i]
         records.append(rec)
 

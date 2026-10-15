@@ -85,6 +85,27 @@ def fmt_pct(x):
     return f"{x * 100:.1f}%"
 
 
+# Metrics whose "Actual" value is a percentage (0-1) vs. a raw point score.
+PCT_METRICS = {"Productivity", "Quality", "PKT"}
+POINT_METRICS = {"Additional Task", "Process Improvements", "Schedule Adherence"}
+
+
+def fmt_num(x):
+    """Format a raw point value: drop trailing .0 but keep real decimals."""
+    if pd.isna(x):
+        return "—"
+    if float(x) == int(x):
+        return str(int(x))
+    return f"{float(x):.2f}".rstrip("0").rstrip(".")
+
+
+def fmt_metric(col, x):
+    """Format an Actual metric value by its type (% vs. points)."""
+    if col in PCT_METRICS:
+        return fmt_pct(x)
+    return fmt_num(x)
+
+
 def pretty_name(alias: str, names: dict) -> str:
     full = names.get(alias)
     return f"{full} ({alias})" if full else alias
@@ -166,17 +187,31 @@ def render_person(df_person: pd.DataFrame, alias: str, names: dict):
     trend = df_person.set_index("month")["overall"]
     st.line_chart(trend, height=260, use_container_width=True)
 
-    # Metric breakdown trend
-    st.markdown("#### Metric breakdown — month on month")
-    metric_trend = df_person.set_index("month")[METRIC_COLS]
-    st.line_chart(metric_trend, height=300, use_container_width=True)
+    # Metric breakdown trends. Percentage metrics and point-based metrics use
+    # different scales, so plot them on separate charts (showing the ACTUAL
+    # values from the scorecard).
+    pct_metrics = [c for c in METRIC_COLS if c in PCT_METRICS]
+    point_metrics = [c for c in METRIC_COLS if c in POINT_METRICS]
+
+    if pct_metrics:
+        st.markdown("#### Actual % metrics — month on month")
+        st.line_chart(
+            df_person.set_index("month")[pct_metrics],
+            height=280, use_container_width=True,
+        )
+    if point_metrics:
+        st.markdown("#### Actual point metrics — month on month")
+        st.line_chart(
+            df_person.set_index("month")[point_metrics],
+            height=280, use_container_width=True,
+        )
 
     # Detailed table
-    st.markdown("#### Details")
+    st.markdown("#### Details (Actual values)")
     show = df_person[["month", "level", "overall", "stack_rank"] + METRIC_COLS].copy()
-    pct_cols = ["overall"] + METRIC_COLS
-    for col in pct_cols:
-        show[col] = show[col].map(fmt_pct)
+    show["overall"] = show["overall"].map(fmt_pct)
+    for col in METRIC_COLS:
+        show[col] = show[col].map(lambda v, c=col: fmt_metric(c, v))
     show["stack_rank"] = show["stack_rank"].map(
         lambda v: "—" if pd.isna(v) else str(int(v))
     )
