@@ -8,6 +8,11 @@ venv/
 # Excel temp lock files
 ~$*.xlsx
 
+# Private team data — NEVER commit (served via Streamlit secrets instead)
+Lead Ops Scorecard 2026.xlsx
+*.xlsx
+secret_block.txt
+
 # OS
 .DS_Store
 Thumbs.db

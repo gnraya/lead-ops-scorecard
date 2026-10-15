@@ -48,12 +48,44 @@ sheets should be named like the existing ones (`January`, `February`, …, `Aug`
 
 ## Sharing with the whole team
 
-Two common options:
+### Streamlit Community Cloud — PUBLIC repo, PRIVATE data (recommended)
 
-### Option A — Streamlit Community Cloud (free, easiest)
-1. Put this folder in a GitHub repo (keep it **private** — it contains team data).
-2. Go to <https://share.streamlit.io>, connect the repo, pick `dashboard.py`.
-3. Share the resulting URL with the team.
+Because some GitHub accounts/orgs block Streamlit from reading **private** repos,
+this project is set up so the **code can live in a public repo while the team
+data stays private**. The data is never committed; it is supplied to the app as
+a Streamlit **secret**.
+
+**One-time deploy:**
+1. The repo is public and contains the code only. `Lead Ops Scorecard 2026.xlsx`
+   is git-ignored and never pushed.
+2. Go to <https://share.streamlit.io> -> **Create app** -> **Deploy a public app
+   from GitHub**:
+   - Repository: `gnraya/lead-ops-scorecard`
+   - Branch: `main`
+   - Main file path: `dashboard.py`
+3. Deploy. It will build but show "no data" until you add the secret (next step).
+4. Generate the secret locally:
+   ```powershell
+   py make_secret.py
+   ```
+   This writes `secret_block.txt` (git-ignored).
+5. In the app: **Manage app -> Settings -> Secrets**, paste the entire contents
+   of `secret_block.txt`, and save. The app restarts with the data loaded.
+6. Share the app URL with the team.
+
+**The secret block looks like:**
+```toml
+team_password = "LeadOps2026"
+scorecard_xlsx_b64 = "<base64 of the xlsx>"
+```
+
+**Updating data each month:** replace `Lead Ops Scorecard 2026.xlsx` locally,
+run `py make_secret.py` again, and paste the new `secret_block.txt` into the
+app's Secrets panel. No git push needed for data changes.
+
+**Changing the team password:** edit `TEAM_PASSWORD` at the top of
+`make_secret.py`, re-run it, and update the secret. (Or edit `team_password`
+directly in the Streamlit Secrets panel.)
 
 ### Option B — Internal server / your machine
 Run with:

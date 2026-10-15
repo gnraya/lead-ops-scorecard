@@ -11,13 +11,54 @@ Workbook layout (per month sheet):
 """
 from __future__ import annotations
 
+import base64
+import io
 import os
 import pandas as pd
 
-# Default location of the workbook (same folder as this file).
+# Default location of the workbook (same folder as this file). Used for local
+# runs. On a public deployment the data is NOT in the repo; instead it is
+# supplied as a base64-encoded secret (see _resolve_workbook).
 DEFAULT_WORKBOOK = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "Lead Ops Scorecard 2026.xlsx"
 )
+
+
+def _resolve_workbook(workbook):
+    """Return something pandas.read_excel accepts (a path or a BytesIO).
+
+    Resolution order:
+      1. If `workbook` is already a non-default value (explicit path/buffer), use it.
+      2. Streamlit secret `scorecard_xlsx_b64` (base64 of the .xlsx)  -> BytesIO.
+      3. Env var SCORECARD_XLSX_B64 (base64 of the .xlsx)             -> BytesIO.
+      4. Fall back to the local DEFAULT_WORKBOOK path.
+
+    This lets the app run locally from the real file, and run on a PUBLIC
+    Streamlit deployment with the data held privately in secrets (never in the
+    repo).
+    """
+    # An explicit buffer or a non-default path always wins.
+    if not isinstance(workbook, str):
+        return workbook
+    if workbook != DEFAULT_WORKBOOK:
+        return workbook
+
+    b64 = None
+    # Streamlit secret (only available when running inside Streamlit).
+    try:
+        import streamlit as st  # local import so the module works without it
+        if "scorecard_xlsx_b64" in st.secrets:  # type: ignore[operator]
+            b64 = str(st.secrets["scorecard_xlsx_b64"])
+    except Exception:
+        pass
+
+    if not b64:
+        b64 = os.environ.get("SCORECARD_XLSX_B64")
+
+    if b64:
+        return io.BytesIO(base64.b64decode(b64))
+
+    return DEFAULT_WORKBOOK
 
 TEAM_SHEET = "Team Details"
 
@@ -54,17 +95,26 @@ def _clean_alias(value) -> str:
     return text
 
 
+def _open_excel(workbook) -> pd.ExcelFile:
+    """Resolve the workbook source (path / buffer / secret) into an ExcelFile.
+
+    An ExcelFile can be read many times, which a one-shot BytesIO cannot.
+    """
+    return pd.ExcelFile(_resolve_workbook(workbook))
+
+
 def load_team_details(workbook: str = DEFAULT_WORKBOOK) -> pd.DataFrame:
     """Return the Team Details sheet with a normalized `alias` column."""
-    df = pd.read_excel(workbook, sheet_name=TEAM_SHEET, header=0)
+    xl = _open_excel(workbook)
+    df = pd.read_excel(xl, sheet_name=TEAM_SHEET, header=0)
     df = df.rename(columns=lambda c: str(c).strip())
     df["alias"] = df["Name"].map(_clean_alias)
     return df
 
 
-def _parse_month_sheet(workbook: str, sheet: str) -> pd.DataFrame:
+def _parse_month_sheet(xl: pd.ExcelFile, sheet: str) -> pd.DataFrame:
     """Parse one month sheet into a tidy per-person DataFrame."""
-    raw = pd.read_excel(workbook, sheet_name=sheet, header=None)
+    raw = pd.read_excel(xl, sheet_name=sheet, header=None)
     if raw.shape[0] < 3:
         return pd.DataFrame()
 
@@ -129,10 +179,10 @@ def _parse_month_sheet(workbook: str, sheet: str) -> pd.DataFrame:
 
 def load_scorecards(workbook: str = DEFAULT_WORKBOOK) -> pd.DataFrame:
     """Return a long-format DataFrame of every person's score for every month."""
-    xl = pd.ExcelFile(workbook)
+    xl = _open_excel(workbook)
     month_sheets = [s for s in xl.sheet_names if s != TEAM_SHEET]
 
-    frames = [_parse_month_sheet(workbook, s) for s in month_sheets]
+    frames = [_parse_month_sheet(xl, s) for s in month_sheets]
     frames = [f for f in frames if not f.empty]
     if not frames:
         return pd.DataFrame()
