@@ -12,6 +12,7 @@ venv/
 Lead Ops Scorecard 2026.xlsx
 *.xlsx
 secret_block.txt
+passwords_to_share.csv
 
 # OS
 .DS_Store
