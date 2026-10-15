@@ -15,6 +15,8 @@ Share with the team:
 """
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 import streamlit as st
 
@@ -24,6 +26,22 @@ import scorecard_data as sc
 # Config
 # --------------------------------------------------------------------------
 MANAGER_ALIASES = {"gnraya"}  # can view everybody
+
+
+def _get_team_password() -> str:
+    """Shared team password.
+
+    Resolution order:
+      1. Streamlit secrets ([general] team_password) if present.
+      2. TEAM_PASSWORD environment variable.
+      3. Fallback default (CHANGE THIS before sharing).
+    """
+    try:
+        if "team_password" in st.secrets:  # type: ignore[operator]
+            return str(st.secrets["team_password"])
+    except Exception:
+        pass
+    return os.environ.get("TEAM_PASSWORD", "LeadOps2026")
 
 METRIC_COLS = [nice for _, nice in sc.METRIC_KEYS]
 
@@ -178,6 +196,7 @@ def dashboard_view():
         st.markdown(f"**Signed in as**\n\n`{alias}`" + ("  👑 Manager" if is_manager else ""))
         if st.button("Sign out"):
             st.session_state.pop("alias", None)
+            st.session_state.pop("authed", None)
             st.rerun()
         st.divider()
 
@@ -203,9 +222,36 @@ def dashboard_view():
 
 
 # --------------------------------------------------------------------------
+# Password gate (shared team password)
+# --------------------------------------------------------------------------
+def password_gate() -> bool:
+    """Return True once the correct shared team password has been entered."""
+    if st.session_state.get("authed"):
+        return True
+
+    st.title("📊 Lead Ops Scorecard")
+    st.caption("Enter the team password to continue.")
+
+    with st.form("password"):
+        pw = st.text_input("Team password", type="password")
+        submitted = st.form_submit_button("Continue")
+
+    if submitted:
+        if pw == _get_team_password():
+            st.session_state["authed"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password. Contact your manager if you need it.")
+
+    return False
+
+
+# --------------------------------------------------------------------------
 # Entry point
 # --------------------------------------------------------------------------
 def main():
+    if not password_gate():
+        return
     if "alias" not in st.session_state:
         login_view()
     else:
