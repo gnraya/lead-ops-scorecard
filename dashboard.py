@@ -27,6 +27,8 @@ import scorecard_data as sc
 # --------------------------------------------------------------------------
 MANAGER_ALIASES = {"gnraya"}  # can view everybody
 
+ALL_MONTHS = "All months"  # sentinel for the month filter
+
 
 def _get_passwords() -> dict:
     """Return the alias -> password map that proves identity at login.
@@ -153,7 +155,8 @@ def login_view():
 # --------------------------------------------------------------------------
 # Scorecard rendering
 # --------------------------------------------------------------------------
-def render_person(df_person: pd.DataFrame, alias: str, names: dict):
+def render_person(df_person: pd.DataFrame, alias: str, names: dict,
+                  month: str | None = None):
     st.subheader(f"Scorecard — {pretty_name(alias, names)}")
 
     if df_person.empty:
@@ -164,20 +167,31 @@ def render_person(df_person: pd.DataFrame, alias: str, names: dict):
         {m: i for i, m in enumerate(sc.MONTH_ORDER)}
     ))
 
-    # Headline metrics (latest month)
-    latest = df_person.iloc[-1]
-    prev = df_person.iloc[-2] if len(df_person) > 1 else None
+    # Headline metrics. When a specific month is selected, headline that month
+    # and compare against the month before it; otherwise headline the latest.
+    if month and month != ALL_MONTHS:
+        row_match = df_person[df_person["month"] == month]
+        if row_match.empty:
+            st.warning(f"No scorecard data for **{month}** yet.")
+            return
+        months_present = list(df_person["month"])
+        focus_idx = months_present.index(month)
+        focus = df_person.iloc[focus_idx]
+        prev = df_person.iloc[focus_idx - 1] if focus_idx > 0 else None
+    else:
+        focus = df_person.iloc[-1]
+        prev = df_person.iloc[-2] if len(df_person) > 1 else None
 
     c1, c2, c3 = st.columns(3)
     with c1:
         delta = None
-        if prev is not None and not pd.isna(prev["overall"]) and not pd.isna(latest["overall"]):
-            delta = f"{(latest['overall'] - prev['overall']) * 100:+.1f} pts"
-        st.metric(f"Overall ({latest['month']})", fmt_pct(latest["overall"]), delta)
+        if prev is not None and not pd.isna(prev["overall"]) and not pd.isna(focus["overall"]):
+            delta = f"{(focus['overall'] - prev['overall']) * 100:+.1f} pts"
+        st.metric(f"Overall ({focus['month']})", fmt_pct(focus["overall"]), delta)
     with c2:
-        st.metric("Level", str(latest.get("level", "—")))
+        st.metric("Level", str(focus.get("level", "—")))
     with c3:
-        sr = latest.get("stack_rank")
+        sr = focus.get("stack_rank")
         st.metric("Stack Rank", "—" if pd.isna(sr) else str(int(sr)))
 
     st.divider()
@@ -206,9 +220,14 @@ def render_person(df_person: pd.DataFrame, alias: str, names: dict):
             height=280, use_container_width=True,
         )
 
-    # Detailed table
-    st.markdown("#### Details (Actual values)")
-    show = df_person[["month", "level", "overall", "stack_rank"] + METRIC_COLS].copy()
+    # Detailed table — all months, or just the selected month.
+    if month and month != ALL_MONTHS:
+        st.markdown(f"#### Details — {month} (Actual values)")
+        df_table = df_person[df_person["month"] == month]
+    else:
+        st.markdown("#### Details (Actual values)")
+        df_table = df_person
+    show = df_table[["month", "level", "overall", "stack_rank"] + METRIC_COLS].copy()
     show["overall"] = show["overall"].map(fmt_pct)
     for col in METRIC_COLS:
         show[col] = show[col].map(lambda v, c=col: fmt_metric(c, v))
@@ -222,7 +241,7 @@ def render_person(df_person: pd.DataFrame, alias: str, names: dict):
     st.dataframe(show, hide_index=True, use_container_width=True)
 
 
-def render_team_overview(df: pd.DataFrame, names: dict):
+def render_team_overview(df: pd.DataFrame, names: dict, month: str | None = None):
     st.subheader("Team overview")
     st.caption("Overall score by month across the whole team.")
 
@@ -232,24 +251,30 @@ def render_team_overview(df: pd.DataFrame, names: dict):
     pivot = pivot.reindex([m for m in sc.MONTH_ORDER if m in pivot.index])
     st.line_chart(pivot, height=340, use_container_width=True)
 
-    st.markdown("#### Latest-month leaderboard")
+    # Leaderboard for the selected month (or the latest month by default).
     months_present = [m for m in sc.MONTH_ORDER if m in df["month"].unique()]
-    if months_present:
-        latest_month = months_present[-1]
-        latest = df[df["month"] == latest_month].copy()
-        latest["name"] = latest["alias"].map(lambda a: pretty_name(a, names))
-        latest = latest.sort_values("overall", ascending=False)
-        board = latest[["name", "level", "overall", "stack_rank"]].copy()
-        board["overall"] = board["overall"].map(fmt_pct)
-        board["stack_rank"] = board["stack_rank"].map(
-            lambda v: "—" if pd.isna(v) else str(int(v))
-        )
-        board = board.rename(columns={
-            "name": "Team member", "level": "Level",
-            "overall": "Overall", "stack_rank": "Stack Rank",
-        })
-        st.markdown(f"**{latest_month}**")
-        st.dataframe(board, hide_index=True, use_container_width=True)
+    if not months_present:
+        return
+
+    if month and month != ALL_MONTHS and month in months_present:
+        board_month = month
+    else:
+        board_month = months_present[-1]
+
+    st.markdown(f"#### Leaderboard — {board_month}")
+    latest = df[df["month"] == board_month].copy()
+    latest["name"] = latest["alias"].map(lambda a: pretty_name(a, names))
+    latest = latest.sort_values("overall", ascending=False)
+    board = latest[["name", "level", "overall", "stack_rank"]].copy()
+    board["overall"] = board["overall"].map(fmt_pct)
+    board["stack_rank"] = board["stack_rank"].map(
+        lambda v: "—" if pd.isna(v) else str(int(v))
+    )
+    board = board.rename(columns={
+        "name": "Team member", "level": "Level",
+        "overall": "Overall", "stack_rank": "Stack Rank",
+    })
+    st.dataframe(board, hide_index=True, use_container_width=True)
 
 
 def dashboard_view():
@@ -264,7 +289,19 @@ def dashboard_view():
             st.rerun()
         st.divider()
 
+        # Month-on-month filter (available to everyone). "All months" keeps the
+        # full history view; picking a month focuses that month's scorecard.
+        months_present = [m for m in sc.MONTH_ORDER if m in df["month"].unique()]
+        month_options = [ALL_MONTHS] + months_present
+        selected_month = st.selectbox(
+            "Month", month_options,
+            index=len(month_options) - 1 if months_present else 0,
+            help="Pick a month to view that month's scorecard, or 'All months' "
+                 "for the month-on-month history.",
+        )
+
         if is_manager:
+            st.divider()
             st.markdown("### Manager view")
             all_aliases = sorted(df["alias"].unique())
             options = ["— Team overview —"] + [pretty_name(a, names) for a in all_aliases]
@@ -276,13 +313,13 @@ def dashboard_view():
 
     if is_manager:
         if choice == "— Team overview —":
-            render_team_overview(df, names)
+            render_team_overview(df, names, month=selected_month)
         else:
             # choice looks like "Full Name (alias)" or just "alias"
             target = choice.split("(")[-1].rstrip(")").strip() if "(" in choice else choice
-            render_person(df[df["alias"] == target], target, names)
+            render_person(df[df["alias"] == target], target, names, month=selected_month)
     else:
-        render_person(df[df["alias"] == alias], alias, names)
+        render_person(df[df["alias"] == alias], alias, names, month=selected_month)
 
 
 # --------------------------------------------------------------------------

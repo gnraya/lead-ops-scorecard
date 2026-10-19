@@ -141,11 +141,24 @@ def _parse_month_sheet(xl: pd.ExcelFile, sheet: str) -> pd.DataFrame:
     name_i = find_col("Name")
     level_i = find_col("Level")
     overall_i = find_col("Overall")
+
+    # Locate the Stack Rank column. The "Stack Rank" label is inconsistent in
+    # the workbook: some months carry it in the sub-header row, some leave the
+    # sub-header blank and put the label in the GROUP row, and some leave it
+    # blank entirely. Check both header rows, then fall back to the column
+    # immediately after "Overall" (where the stack rank value actually lives).
     stack_i = None
     for i, s in enumerate(sub_row):
         if s.lower().startswith("stack"):
             stack_i = i
             break
+    if stack_i is None:
+        for i, g in enumerate(groups):
+            if isinstance(g, str) and g.strip().lower().startswith("stack"):
+                stack_i = i
+                break
+    if stack_i is None and overall_i is not None and overall_i + 1 < len(sub_row):
+        stack_i = overall_i + 1
 
     # Map each metric group -> its "Actual" column index (the raw measured
     # value, e.g. actual productivity / quality %), NOT the weighted "Achieved".
