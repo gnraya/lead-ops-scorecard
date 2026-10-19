@@ -357,12 +357,17 @@ def build_performance_summary(df: pd.DataFrame, alias: str, names: dict):
     # Metric rows (Actual values), formatted by type.
     metric_lines = []
     html_rows = []
-    for col in METRIC_COLS:
+    for i, col in enumerate(METRIC_COLS):
         val = fmt_metric(col, row.get(col))
         metric_lines.append(f"  {col}: {val}")
+        bg = "#ffffff" if i % 2 == 0 else "#f6f8fb"
         html_rows.append(
-            f"<tr><td style='padding:4px 10px;border:1px solid #ddd'>{col}</td>"
-            f"<td style='padding:4px 10px;border:1px solid #ddd'>{val}</td></tr>"
+            f"<tr style='background:{bg}'>"
+            f"<td style='padding:9px 14px;border-bottom:1px solid #e6eaf0;"
+            f"color:#334;font-size:13px'>{col}</td>"
+            f"<td style='padding:9px 14px;border-bottom:1px solid #e6eaf0;"
+            f"text-align:right;font-weight:600;color:#1a2b4a;font-size:13px'>{val}</td>"
+            f"</tr>"
         )
 
     sr = row.get("stack_rank")
@@ -376,14 +381,45 @@ def build_performance_summary(df: pd.DataFrame, alias: str, names: dict):
         + "\n".join(metric_lines)
     )
 
+    # Three summary "stat" cells (Overall / Level / Stack Rank) as a table row,
+    # then the metric table. Table-based layout renders reliably in Outlook.
+    def _stat(label, value):
+        return (
+            "<td style='padding:0 6px'>"
+            "<table role='presentation' cellpadding='0' cellspacing='0' "
+            "style='width:100%;background:#f0f4fa;border:1px solid #e0e7f1;"
+            "border-radius:8px'>"
+            "<tr><td style='padding:12px 14px;text-align:center'>"
+            f"<div style='font-size:11px;letter-spacing:.04em;text-transform:uppercase;"
+            f"color:#6b7a90'>{label}</div>"
+            f"<div style='font-size:20px;font-weight:700;color:#1a2b4a;margin-top:3px'>"
+            f"{value}</div>"
+            "</td></tr></table></td>"
+        )
+
     html = (
-        f"<h3 style='margin-bottom:6px'>Performance summary &mdash; {month}</h3>"
-        f"<p style='margin:2px 0'><b>Level:</b> {level} &nbsp; "
-        f"<b>Overall:</b> {fmt_pct(overall)} &nbsp; "
-        f"<b>Stack Rank:</b> {sr_txt}</p>"
-        "<table style='border-collapse:collapse;margin-top:6px'>"
-        "<tr><th style='padding:4px 10px;border:1px solid #ddd;text-align:left'>Metric</th>"
-        "<th style='padding:4px 10px;border:1px solid #ddd;text-align:left'>Actual</th></tr>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' style='width:100%'>"
+        f"<tr><td style='padding-bottom:6px'>"
+        f"<span style='font-size:16px;font-weight:700;color:#1a2b4a'>"
+        f"Performance Summary</span>"
+        f"<span style='font-size:13px;color:#6b7a90'> &nbsp;&middot;&nbsp; {month}</span>"
+        "</td></tr></table>"
+        # Stat cells
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;margin:4px 0 14px'><tr>"
+        + _stat("Overall", fmt_pct(overall))
+        + _stat("Level", level)
+        + _stat("Stack Rank", sr_txt)
+        + "</tr></table>"
+        # Metric table
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;border-collapse:collapse;border:1px solid #e6eaf0;"
+        "border-radius:8px;overflow:hidden'>"
+        "<tr style='background:#1a2b4a'>"
+        "<th style='padding:10px 14px;text-align:left;color:#ffffff;"
+        "font-size:12px;letter-spacing:.03em'>METRIC</th>"
+        "<th style='padding:10px 14px;text-align:right;color:#ffffff;"
+        "font-size:12px;letter-spacing:.03em'>ACTUAL</th></tr>"
         + "".join(html_rows) +
         "</table>"
     )
@@ -406,13 +442,27 @@ def _section(title: str, body: str) -> str:
     return f"\n\n{title}\n{'-' * len(title)}\n{body}"
 
 
+MANAGER_NAME = "Narayana G"
+SIGNOFF_TEXT = "Let me know if you have questions."
+
+
 def _html_section(title: str, body: str) -> str:
     body = (body or "").strip()
     if not body:
         return ""
     safe = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     safe = safe.replace("\n", "<br>")
-    return f"<h3 style='margin-bottom:4px'>{title}</h3><p style='margin-top:0'>{safe}</p>"
+    # Section heading with a colored left accent bar, then the body text.
+    return (
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;margin:18px 0 6px'><tr>"
+        "<td style='width:4px;background:#2d6cdf;border-radius:2px'></td>"
+        "<td style='padding-left:10px;font-size:14px;font-weight:700;"
+        f"color:#1a2b4a'>{title}</td>"
+        "</tr></table>"
+        f"<div style='font-size:13.5px;line-height:1.55;color:#33425a;"
+        f"margin:0 0 2px 14px'>{safe}</div>"
+    )
 
 
 def build_email_plain(subject, perf_plain, discussion, strengths, actions, extra):
@@ -421,19 +471,64 @@ def build_email_plain(subject, perf_plain, discussion, strengths, actions, extra
     parts.append(_section("Strengths & Areas to Improve", strengths))
     parts.append(_section("Action Items & Next Steps", actions))
     parts.append(_section("Additional Points", extra))
-    return "".join(p for p in parts if p).strip() or subject
+    body = "".join(p for p in parts if p).strip() or subject
+    # Sign-off.
+    body += f"\n\n{SIGNOFF_TEXT}\n\nThanks,\n{MANAGER_NAME}"
+    return body
 
 
-def build_email_html(perf_html, discussion, strengths, actions, extra):
+def build_email_html(perf_html, discussion, strengths, actions, extra,
+                     greeting_name="", meeting_date_str=""):
     body = [perf_html] if perf_html else []
     body.append(_html_section("Discussion Points", discussion))
     body.append(_html_section("Strengths &amp; Areas to Improve", strengths))
     body.append(_html_section("Action Items &amp; Next Steps", actions))
     body.append(_html_section("Additional Points", extra))
     inner = "".join(b for b in body if b)
+
+    greeting = (
+        f"<p style='font-size:14px;color:#33425a;margin:0 0 14px'>Hi {greeting_name},</p>"
+        if greeting_name else ""
+    )
+
+    signoff = (
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;margin-top:22px;border-top:1px solid #e6eaf0'>"
+        "<tr><td style='padding-top:14px'>"
+        f"<p style='font-size:13.5px;color:#33425a;margin:0 0 10px'>{SIGNOFF_TEXT}</p>"
+        "<p style='font-size:13.5px;color:#33425a;margin:0'>Thanks,</p>"
+        f"<p style='font-size:14px;font-weight:700;color:#1a2b4a;margin:2px 0 0'>"
+        f"{MANAGER_NAME}</p>"
+        "</td></tr></table>"
+    )
+
+    # Header band + centered card. Outlook renders tables far more reliably
+    # than divs/flexbox, so the whole layout is table-based with inline styles.
     return (
-        "<html><body style='font-family:Segoe UI,Arial,sans-serif;"
-        "font-size:14px;color:#222'>" + inner + "</body></html>"
+        "<html><body style='margin:0;padding:0;background:#eef1f6'>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:100%;background:#eef1f6'><tr><td align='center' "
+        "style='padding:24px 12px'>"
+        "<table role='presentation' cellpadding='0' cellspacing='0' "
+        "style='width:640px;max-width:640px;background:#ffffff;border-radius:12px;"
+        "overflow:hidden;border:1px solid #e2e7ef;"
+        "font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif'>"
+        # Header band
+        "<tr><td style='background:#1a2b4a;padding:22px 28px'>"
+        "<div style='font-size:19px;font-weight:700;color:#ffffff'>"
+        "1:1 Meeting Summary</div>"
+        "<div style='font-size:13px;color:#aebcd4;margin-top:3px'>"
+        "Lead Ops Performance Review"
+        + (f" &nbsp;&middot;&nbsp; {meeting_date_str}" if meeting_date_str else "")
+        + "</div>"
+        "</td></tr>"
+        # Content
+        "<tr><td style='padding:24px 28px'>"
+        + greeting + inner + signoff +
+        "</td></tr>"
+        "</table>"
+        "</td></tr></table>"
+        "</body></html>"
     )
 
 
@@ -521,21 +616,36 @@ def meeting_notes_view():
     actions = st.text_area("Action Items & Next Steps", height=120)
     extra = st.text_area("Additional points", height=90)
 
-    # Combine the auto blurb with the metric table for the email body.
-    perf_plain_full = (perf_plain + ("\n\n" + perf_blurb if perf_blurb.strip() else "")) if perf_plain else perf_blurb
-    perf_html_full = perf_html + (_html_section("Summary", perf_blurb) if perf_blurb.strip() else "") if perf_html else _html_section("Summary", perf_blurb)
+    # The associate's first name for the greeting ("Hi <Name>,").
+    full_name = names.get(target_alias, target_alias)
+    first_name = str(full_name).replace(",", " ").split()[0] if full_name else target_alias
+    date_str = f"{meeting_date:%d %b %Y}"
+
+    # Combine the metric table with the editable blurb paragraph.
+    blurb = perf_blurb.strip()
+    if perf_plain:
+        perf_plain_full = perf_plain + (f"\n\n{blurb}" if blurb else "")
+    else:
+        perf_plain_full = blurb
+    if perf_html:
+        blurb_html = (
+            f"<p style='font-size:13.5px;line-height:1.55;color:#33425a;"
+            f"margin:12px 0 0'>{blurb}</p>" if blurb else ""
+        )
+        perf_html_full = perf_html + blurb_html
+    else:
+        perf_html_full = (
+            f"<p style='font-size:13.5px;color:#33425a'>{blurb}</p>" if blurb else ""
+        )
 
     text_body = build_email_plain(subject, perf_plain_full, discussion,
                                   strengths, actions, extra)
-    html_body = build_email_html(perf_html_full, discussion, strengths, actions, extra)
+    # Prepend greeting + meeting date to the plain-text body.
+    text_body = (f"Hi {first_name},\n\nMeeting date: {date_str}\n\n" + text_body)
 
-    # Prepend the meeting date to the body.
-    date_line = f"Meeting date: {meeting_date:%d %b %Y}\n\n"
-    text_body = date_line + text_body
-    html_body = html_body.replace(
-        "<body style='font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#222'>",
-        "<body style='font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#222'>"
-        f"<p><b>Meeting date:</b> {meeting_date:%d %b %Y}</p>",
+    html_body = build_email_html(
+        perf_html_full, discussion, strengths, actions, extra,
+        greeting_name=first_name, meeting_date_str=date_str,
     )
 
     st.divider()
