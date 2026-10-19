@@ -113,6 +113,47 @@ def pretty_name(alias: str, names: dict) -> str:
     return f"{full} ({alias})" if full else alias
 
 
+@st.cache_data(show_spinner=False)
+def get_level_weights():
+    """Cached L2-vs-L3 metric weighting box from the Team Details sheet."""
+    try:
+        return sc.load_level_weights()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _fmt_weight(v):
+    """Weights are stored as fractions (0.4) -> show as % ; pass text through."""
+    if pd.isna(v):
+        return "—"
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return f"{f * 100:.0f}%"
+
+
+def render_level_criteria():
+    """Show the manager's L2 vs L3 metric-weighting box so the team can see
+    how scoring differs by level."""
+    weights = get_level_weights()
+    if weights is None or weights.empty:
+        return
+
+    with st.expander("ℹ️ Scoring criteria — how L2 vs L3 metrics differ", expanded=False):
+        st.caption(
+            "Weighting of each metric toward the overall score, by level. "
+            "Maintained on the Team Details sheet."
+        )
+        disp = weights.copy()
+        # Format every level column (everything except the Metric name) as %.
+        for col in disp.columns:
+            if col.strip().lower() == "metric":
+                continue
+            disp[col] = disp[col].map(_fmt_weight)
+        st.dataframe(disp, hide_index=True, use_container_width=True)
+
+
 # --------------------------------------------------------------------------
 # Login gate
 # --------------------------------------------------------------------------
@@ -310,6 +351,9 @@ def dashboard_view():
             choice = None
 
     st.title("📊 Lead Ops Scorecard")
+
+    # Scoring criteria (L2 vs L3) — visible to everyone, collapsed by default.
+    render_level_criteria()
 
     if is_manager:
         if choice == "— Team overview —":

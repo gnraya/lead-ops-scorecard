@@ -117,6 +117,59 @@ def load_team_details(workbook: str = DEFAULT_WORKBOOK) -> pd.DataFrame:
     return df
 
 
+def load_level_weights(workbook: str = DEFAULT_WORKBOOK) -> pd.DataFrame:
+    """Read the "L2 vs L3" metric-weighting box from the Team Details sheet.
+
+    The box is a small table the manager maintains on the Team Details sheet,
+    with a header row like `Metric | L2 | L3` followed by one row per metric.
+    We locate it by scanning for the "Metric" header cell (rather than hard-
+    coding its position) so it keeps working if the box moves a bit.
+
+    Returns a DataFrame with columns: Metric, L2, L3 (empty if not found).
+    """
+    try:
+        xl = _open_excel(workbook)
+        raw = pd.read_excel(xl, sheet_name=TEAM_SHEET, header=None)
+    except Exception:
+        return pd.DataFrame(columns=["Metric", "L2", "L3"])
+
+    # Find the header cell whose text is "Metric".
+    header_rc = None
+    for r in range(raw.shape[0]):
+        for c in range(raw.shape[1]):
+            v = raw.iloc[r, c]
+            if isinstance(v, str) and v.strip().lower() == "metric":
+                header_rc = (r, c)
+                break
+        if header_rc:
+            break
+    if not header_rc:
+        return pd.DataFrame(columns=["Metric", "L2", "L3"])
+
+    hr, hc = header_rc
+    # Column headers: the cells to the right of "Metric" (e.g. L2, L3).
+    level_cols = []
+    for c in range(hc + 1, raw.shape[1]):
+        v = raw.iloc[hr, c]
+        if isinstance(v, str) and v.strip():
+            level_cols.append((c, v.strip()))
+        else:
+            break
+
+    rows = []
+    for r in range(hr + 1, raw.shape[0]):
+        metric = raw.iloc[r, hc]
+        if not (isinstance(metric, str) and metric.strip()):
+            break  # box ends at the first blank metric cell
+        rec = {"Metric": metric.strip()}
+        for c, label in level_cols:
+            rec[label] = raw.iloc[r, c]
+        rows.append(rec)
+
+    cols = ["Metric"] + [label for _, label in level_cols]
+    return pd.DataFrame(rows, columns=cols)
+
+
 def _parse_month_sheet(xl: pd.ExcelFile, sheet: str) -> pd.DataFrame:
     """Parse one month sheet into a tidy per-person DataFrame."""
     raw = pd.read_excel(xl, sheet_name=sheet, header=None)
