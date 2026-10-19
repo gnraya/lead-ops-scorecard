@@ -138,14 +138,22 @@ def render_level_criteria():
     """Show the manager's L2 vs L3 metric-weighting box so the team can see
     how scoring differs by level."""
     weights = get_level_weights()
-    if weights is None or weights.empty:
-        return
 
-    with st.expander("ℹ️ Scoring criteria — how L2 vs L3 metrics differ", expanded=False):
+    with st.expander("ℹ️ Scoring criteria — how L2 vs L3 metrics differ", expanded=True):
         st.caption(
             "Weighting of each metric toward the overall score, by level. "
             "Maintained on the Team Details sheet."
         )
+        if weights is None or weights.empty:
+            # The box wasn't found in the data the app is currently running on.
+            # Surface it (instead of hiding) so it's clear this is a data issue,
+            # not a missing feature.
+            st.info(
+                "The L2 vs L3 scoring box wasn't found in the loaded data. "
+                "If you just added it to the Team Details sheet, update the "
+                "app secret with the latest `secret_block.txt` and reboot."
+            )
+            return
         disp = weights.copy()
         # Format every level column (everything except the Metric name) as %.
         for col in disp.columns:
