@@ -444,6 +444,17 @@ def _section(title: str, body: str) -> str:
 
 MANAGER_NAME = "Narayana G"
 SIGNOFF_TEXT = "Let me know if you have questions."
+APP_URL = "https://lead-ops-scorecard-edsvbekph7avxtm3vj2vjq.streamlit.app/"
+# Line inviting the associate to view their own month-on-month scorecard.
+SCORECARD_LINK_HTML = (
+    "To view your historic or month-on-month scorecard, you may visit the "
+    f"<a href='{APP_URL}' style='color:#2d6cdf;text-decoration:underline'>"
+    "scorecard app</a>."
+)
+SCORECARD_LINK_PLAIN = (
+    "To view your historic or month-on-month scorecard, you may visit the "
+    f"scorecard app: {APP_URL}"
+)
 
 
 def _html_section(title: str, body: str) -> str:
@@ -473,7 +484,7 @@ def build_email_plain(subject, perf_plain, discussion, strengths, actions, extra
     parts.append(_section("Additional Points", extra))
     body = "".join(p for p in parts if p).strip() or subject
     # Sign-off.
-    body += f"\n\n{SIGNOFF_TEXT}\n\nThanks,\n{MANAGER_NAME}"
+    body += f"\n\n{SCORECARD_LINK_PLAIN}\n\n{SIGNOFF_TEXT}\n\nThanks,\n{MANAGER_NAME}"
     return body
 
 
@@ -495,6 +506,8 @@ def build_email_html(perf_html, discussion, strengths, actions, extra,
         "<table role='presentation' cellpadding='0' cellspacing='0' "
         "style='width:100%;margin-top:22px;border-top:1px solid #e6eaf0'>"
         "<tr><td style='padding-top:14px'>"
+        f"<p style='font-size:13.5px;color:#33425a;margin:0 0 10px'>"
+        f"{SCORECARD_LINK_HTML}</p>"
         f"<p style='font-size:13.5px;color:#33425a;margin:0 0 10px'>{SIGNOFF_TEXT}</p>"
         "<p style='font-size:13.5px;color:#33425a;margin:0'>Thanks,</p>"
         f"<p style='font-size:14px;font-weight:700;color:#1a2b4a;margin:2px 0 0'>"
