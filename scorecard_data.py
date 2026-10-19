@@ -62,6 +62,11 @@ def _resolve_workbook(workbook):
 
 TEAM_SHEET = "Team Details"
 
+# Sheets that are NOT per-month scorecards and must be skipped by the parser.
+# "Additional Task" is a free-text reference sheet (month-by-alias cross-tab of
+# task descriptions), not numeric scorecard data.
+NON_MONTH_SHEETS = {TEAM_SHEET, "Additional Task"}
+
 # Month sheet names in calendar order (as they appear in the workbook).
 MONTH_ORDER = [
     "January", "February", "March", "April", "May", "June",
@@ -194,7 +199,7 @@ def _parse_month_sheet(xl: pd.ExcelFile, sheet: str) -> pd.DataFrame:
 def load_scorecards(workbook: str = DEFAULT_WORKBOOK) -> pd.DataFrame:
     """Return a long-format DataFrame of every person's score for every month."""
     xl = _open_excel(workbook)
-    month_sheets = [s for s in xl.sheet_names if s != TEAM_SHEET]
+    month_sheets = [s for s in xl.sheet_names if s not in NON_MONTH_SHEETS]
 
     frames = [_parse_month_sheet(xl, s) for s in month_sheets]
     frames = [f for f in frames if not f.empty]
